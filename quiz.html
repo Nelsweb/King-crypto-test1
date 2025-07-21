@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Quiz</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <script src="backend/firebase.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <h2>King Crypto Test Quiz</h2>
+  <div id="timer">20:00</div>
+  <div id="quiz-container"></div>
+  <button onclick="submitQuiz()">Submit</button>
+  <div id="result"></div>
+  <div id="comments">
+    <h3>Discussion</h3>
+    <textarea id="commentBox" placeholder="Post your comment..."></textarea>
+    <button onclick="postComment()">Post</button>
+    <ul id="commentList"></ul>
+  </div>
+
+<script>
+let questions = [];
+let currentMatric = localStorage.getItem("matric") || "anonymous";
+
+// Fetch questions
+db.ref('questions').once('value').then(snapshot => {
+  questions = Object.values(snapshot.val() || {});
+  questions = questions.sort(() => 0.5 - Math.random()).slice(0, 10);
+  renderQuiz();
+});
+
+function renderQuiz() {
+  const container = document.getElementById("quiz-container");
+  container.innerHTML = '';
+  questions.forEach((q, i) => {
+    const opts = q.options.map((opt, j) => 
+      `<label><input type='radio' name='q${i}' value='${j}'/> ${String.fromCharCode(65+j)}. ${opt}</label><br>`
+    ).join('');
+    container.innerHTML += `<div><p><strong>Q${i+1}:</strong> ${q.question}</p>${opts}</div><hr>`;
+  });
+}
+
+// Timer
+let seconds = 1200;
+const timerEl = document.getElementById("timer");
+const timer = setInterval(() => {
+  seconds--;
+  const min = Math.floor(seconds / 60);
+  const sec = seconds % 60;
+  timerEl.textContent = `${min}:${sec.toString().padStart(2, '0')}`;
+  if (seconds <= 0) {
+    clearInterval(timer);
+    submitQuiz();
+  }
+}, 1000);
+
+function submitQuiz() {
+  clearInterval(timer);
+  let score = 0;
+  const resultBox = document.getElementById("result");
+  questions.forEach((q, i) => {
+    const selected = document.querySelector(`input[name=q${i}]:checked`);
+    if (selected && parseInt(selected.value) === q.answer) score++;
+  });
+  resultBox.innerHTML = `<h3>Your Score: ${score}/${questions.length}</h3>`;
+  if (score >= 7) generateCertificate(currentMatric);
+
+  db.ref('results/' + currentMatric).push({ score, date: new Date().toISOString() });
+}
+
+function generateCertificate(name) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.text("Certificate of Completion", 20, 30);
+  doc.text("Awarded to: " + name, 20, 50);
+  doc.save("certificate.pdf");
+}
+
+// Comments
+function postComment() {
+  const comment = document.getElementById("commentBox").value;
+  if (comment) {
+    db.ref('comments').push({ user: currentMatric, comment });
+    document.getElementById("commentBox").value = "";
+    loadComments();
+  }
+}
+
+function loadComments() {
+  const list = document.getElementById("commentList");
+  db.ref('comments').once('value').then(snapshot => {
+    list.innerHTML = '';
+    snapshot.forEach(child => {
+      const data = child.val();
+      const li = document.createElement("li");
+      li.textContent = `${data.user}: ${data.comment}`;
+      list.appendChild(li);
+    });
+  });
+}
+loadComments();
+</script>
+</body>
+</html>
